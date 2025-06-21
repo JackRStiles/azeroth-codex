@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "bulma": "^1.0.4",
+    "gulp": "^5.0.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

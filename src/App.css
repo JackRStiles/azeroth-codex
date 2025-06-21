@@ -1,42 +1,73 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+:root {
+    /* Your existing palette variables */
+    --color-primary-bg: #F5F7FA;
+    --color-secondary-bg: #FFFFFF;
+    --color-dark-bg: #343A40;
+    --color-main-text: #343A40;
+    --color-secondary-text: #6C757D;
+    --color-light-text: #F5F7FA;
+    --color-primary: #8E44AD;
+    --color-accent: #FFC107;
+    --color-alliance-accent: #007BFF;
+    --color-horde-accent: #DC3545;
+    --color-border: #E9ECEF;
+
+    /* NEW: Override Bulma's default primary color */
+    --bulma-primary: var(--color-primary);
+    --bulma-link: var(---color-primary);
+
+    /* NEW: Override Bulma's hero-specific HSL variables for the primary color */
+    --bulma-primary-h: 270;
+    /* Hue for #8E44AD */
+    --bulma-primary-s: 39%;
+    /* Saturation for #8E44AD */
+    --bulma-primary-l: 47%;
+    /* Lightness for #8E44AD */
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+body {
+    background-color: var(--color-primary-bg);
+    color: var(--color-main-text);
+    font-family: 'Inter', sans-serif;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.hero.is-primary {
+    background-color: transparent;
+    background-image: radial-gradient(
+        circle at center,
+        var(--bulma-primary),
+        hsl(270, 39%, 35%)
+    );
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.hero.is-primary .title {
+    --bulma-title-color: var(--color-light-text);
+    --bulma-title-strong-color: var(--color-light-text);
 }
 
-.card {
-  padding: 2em;
+.hero.is-primary .subtitle {
+    --bulma-subtitle-color: var(--color-light-text);
+    --bulma-subtitle-strong-color: var(--color-light-text);
 }
 
-.read-the-docs {
-  color: #888;
+.tabs li.is-active a {
+    border-bottom-color: var(--color-epic-accent);
+    color: var(--color-primary)
+}
+
+.footer {
+    --bulma-footer-background-color: var(--color-dark-bg);
+    background-color: var(--bulma-footer-background-color);
+    color: var(--color-light-text);
+    padding: 3rem 1.5rem;
+}
+
+.footer a {
+    color: var(--color-accent);    
+}
+
+.footer a:hover {
+    text-decoration: underline;
 }
