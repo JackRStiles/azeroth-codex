@@ -1,146 +1,258 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 
+/**
+ * RealmStatusDisplay component fetches and displays the status of World of Warcraft realms.
+ * It provides sorting functionality for realm data.
+ *
+ * @param {object} props - The component props.
+ * @param {string} props.region - The region for which to fetch realm status (e.g., "eu", "us").
+ * @param {object} props.config - Configuration object containing API base URL, namespace, and locale.
+ * @param {string} props.ACCESS_TOKEN - The authentication token required for API calls.
+ */
 function RealmStatusDisplay({ region, config, ACCESS_TOKEN }) {
-    const [realms, setRealms] = useState([]);       // Stores the array of realm data
-    const [loading, setLoading] = useState(true);   // True when fetching, false otherwise
-    const [error, setError] = useState(null);       // Stores any error message, null if no error
-    const [connectedRealmOverallStatus, setConnectedRealmOverallStatus] = useState(null);
+    const [allRealmsForDisplay, setAllRealmsForDisplay] = useState(null);   // State to store the flattened array of realm data ready for display.
+    const [isLoading, setIsLoading] = useState(true);                       // State to indicate if data is currently being fetched (true when fetching, false otherwise).
+    const [error, setError] = useState(null);                               // State to store any error message that occurs during data fetching, null if no error.
+    const [sortDirection, setSortDirection] = useState('asc');              // State to control the sorting direction ('asc' for ascending, 'desc' for descending).
+    const [sortColumn, setSortColumn] = useState(null);                     // State to store the column currently being sorted by.
 
-    // This effect will run after the first render, and then whenever
-    // the 'region', 'config', or 'ACCESS_TOKEN' props change.
+    // useEffect hook to fetch realm data when the component mounts or when
+    // 'region', 'config', or 'ACCESS_TOKEN' props change.
     useEffect(() => {
-        async function fetchRealmData() {
-            setLoading(true);
+        const fetchRealmData = async () => {
+            setIsLoading(true);
             setError(null);
 
+            // If no access token is provided, set an error and stop loading.
+            if (!ACCESS_TOKEN) {
+                setError("Authentication token not available.");
+                setIsLoading(false);
+                return;
+            }
+
             try {
-                // Step 1: Get Realm Index and Connected Realm ID
-                const connectedRealmUrl = `${config.baseUrl}/data/wow/connected-realm/index?namespace=${config.namespace}&locale=${config.locale}`;
-                const connectedRealmResponse = await fetch(connectedRealmUrl, {
+                // Step 1: Fetch the list of all connected realm IDs from the API.
+                const indexUrl = `${config.baseUrl}/data/wow/connected-realm/index?namespace=${config.namespace}&locale=${config.locale}`;
+                const indexResponse = await axios.get(indexUrl, {
                     headers: {
                         'Authorization': `Bearer ${ACCESS_TOKEN}`
                     }
                 });
 
-                if (!connectedRealmResponse.ok) {
-                    throw new Error(`HTTP error for ${region} connected realm index! Status: ${connectedRealmResponse.status} - ${connectedRealmResponse.statusText}`);
+                // Step 2: Extract connected realm IDs from the 'href' property of each realm.
+                const connectedRealmIds = indexResponse.data.connected_realms.map(realm => {
+                    const urlParts = realm.href.split('/');
+                    const idWithQuery = urlParts[urlParts.length - 1];
+                    return idWithQuery.split('?')[0];
+                });
+
+                // Step 3: Fetch detailed status for each connected realm with throttling.
+                // Throttling (with a 50ms delay) is implemented to prevent hitting API rate limits (e.g., 429 errors).
+                const allConnectedRealmStatuses = [];
+                const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+                for (const id of connectedRealmIds) {
+                    try {
+                        const statusUrl = `${config.baseUrl}/data/wow/connected-realm/${id}?namespace=${config.namespace}&locale=${config.locale}`;
+                        const response = await axios.get(statusUrl, {
+                            headers: {
+                                'Authorization': `Bearer ${ACCESS_TOKEN}`,
+                            },
+                        })
+                        allConnectedRealmStatuses.push(response.data);
+                        await delay(50);
+                    } catch (individualError) {
+                        console.warn(`Could not fetch status for connected realm ID ${id}:`, individualError.response ? individualError.response.data : individualError.message);
+                    }
                 }
 
-                const connectedRealmData = await connectedRealmResponse.json();
-
-                // Step 2: Gets the status for the realm
-                let connectedRealmID = null;
-                // Checks if the call to the API returned an array of realms
-                // that isn't empty.
-                if (connectedRealmData.connected_realms && connectedRealmData.connected_realms.length > 0) {
-                    // Gets the first realm from the array, splits it into sections based on the '/',
-                    // trims any parameters, and gets the ID.
-                    const firstConnectedRealm = connectedRealmData.connected_realms[0];
-                    const firstHref = firstConnectedRealm.href;
-                    const parts = firstHref.split('/');
-                    const connectedRealmID = parts[parts.length - 1].split('?')[0];
-
-                    // Contructs the URL for the second API query, that will return the status
-                    // then fetches the data and stores it, ready for processing.
-                    const connectedRealmStatusURL = `${config.baseUrl}/data/wow/connected-realm/${connectedRealmID}?namespace=${config.namespace}&locale=${config.locale}`;
-                    const statusResponse = await fetch(connectedRealmStatusURL, {
-                        headers: {
-                            'Authorization': `Bearer ${ACCESS_TOKEN}`
-                        }
-                    });
-
-                    if (!statusResponse.ok) {
-                        throw new Error(`HTTP error fetching connected realm status! Status: ${statusResponse.status} - ${statusResponse.statusText}`);
+                // Step 4: Process the fetched connected realm data and flatten it into a displayable format.
+                const flattenedRealms = [];
+                allConnectedRealmStatuses.forEach(connectedRealm => {
+                    if (connectedRealm.realms && Array.isArray(connectedRealm.realms)) {
+                        connectedRealm.realms.forEach(individualRealm => {
+                            flattenedRealms.push({
+                                connectedRealmId: connectedRealm.id,
+                                realmName: individualRealm.name,
+                                statusType: connectedRealm.status.type,
+                                statusName: connectedRealm.status.name,
+                                populationType: connectedRealm.population.type,
+                                populationName: connectedRealm.population.name,
+                                hasQueue: connectedRealm.has_queue,
+                                realmType: individualRealm.type.name
+                            });
+                        });
                     }
+                });
 
-                    const statusData = await statusResponse.json();
-                    console.log(statusData);
-                    console.log(statusData.realms);
-
-                    setConnectedRealmOverallStatus({
-                        status: statusData.status.type,
-                        population: statusData.population.type
-                    });
-
-                    if (statusData.realms && statusData.realms.length > 0) {
-                        setRealms(statusData.realms);
-                    } else {
-                        setRealms([]); // Ensure it's an empty array if no realms found
-                        setError(`No detailed realm list found for connected realm ID ${connectedRealmId}.`);
-                    }
-
-                } else {
-                    setError("No connected realms found.")
-                    setLoading(false);
-                    return;
-                }
+                // Update the state with the flattened realm data.
+                setAllRealmsForDisplay(flattenedRealms);
 
             } catch (err) {
+                // Catch any errors that occur during the main API calls and set an error message.
                 console.error(`Error fetching ${region} realm status:`, err);
                 setError(`Failed to load ${region} realm status. Please check your network or API token. Error: ${err.message}`);
             } finally {
-                setLoading(false);
+                // Always set isLoading to false once fetching is complete, regardless of success or failure.
+                setIsLoading(false);
             }
-
         }
 
         fetchRealmData();
 
-        // This function is returned by the effect, and it runs when the component
-        // unmounts or before the effect re-runs (useful for cleanup).
+        // Cleanup function (runs when the component unmounts or before the effect re-runs).
+        // In this case, there's no specific cleanup needed for this effect.
         return () => {
 
         };
 
-    }, [region, config, ACCESS_TOKEN]); // Dependency array: Effect re-runs if any of these values change
+    }, [region, config, ACCESS_TOKEN]); // Dependency array: The effect will re-run if any of these values change.
+
+    /**
+     * Handles sorting when a table header is clicked.
+     * Toggles the sort direction if the same column is clicked again, otherwise sorts ascending.
+     * @param {string} column - The name of the column to sort by.
+     */
+    const handleSort = (column) => {
+        if (sortColumn === column) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortColumn(column);
+            setSortDirection('asc');
+        }
+    };
+
+    // useMemo hook to memoize the sorted realms array.
+    // This prevents re-sorting the data unnecessarily on every render if
+    // allRealmsForDisplay, sortColumn, or sortDirection haven't changed.
+    const sortedRealms = useMemo(() => {
+        // If there's no data to display, return an empty array.
+        if (!allRealmsForDisplay) return [];
+
+        // Create a shallow copy of the array to sort, to avoid mutating the original state.
+        const sortableRealms = [...allRealmsForDisplay];
+
+        if (sortColumn) {
+            sortableRealms.sort((a, b) => {
+                let valueA = a[sortColumn];
+                let valueB = b[sortColumn];
+
+                // Custom sorting logic for 'statusName': 'UP' comes before 'DOWN'.
+                if (sortColumn === 'statusName') {
+                    valueA = a.statusType === 'UP' ? 1 : 0;
+                    valueB = b.statusType === 'UP' ? 1 : 0;
+                }
+                // Custom sorting logic for 'populationName': 'HIGH' > 'MEDIUM' > 'LOW' > 'FULL'.
+                else if (sortColumn === 'populationName') {
+                    const populationOrder = { 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1, 'FULL': 4 }; // Assign numerical values
+                    valueA = populationOrder[a.populationType] || 0; // Default to 0 for unknown
+                    valueB = populationOrder[b.populationType] || 0;
+                }
+                // Default comparison for other columns (case-insensitive for strings).
+                else {
+                    if (typeof valueA === 'string' && typeof valueB === 'string') {
+                        valueA = valueA.toLowerCase();
+                        valueB = valueB.toLowerCase();
+                    }
+                }
+
+                // Perform the actual comparison based on sort direction.
+                if (valueA < valueB) {
+                    return sortDirection === 'asc' ? -1 : 1;
+                }
+                if (valueA > valueB) {
+                    return sortDirection === 'asc' ? 1 : -1;
+                }
+                return 0; // Values are equal
+            });
+        }
+        return sortableRealms;
+    }, [allRealmsForDisplay, sortColumn, sortDirection]);
 
     return (
         <div className="content">
-            <h3 className="title is-4">Connected Realm Status for {region}:</h3>
+            {/* Conditionally render a loading message (progress bar) */}
+            {isLoading && (
+                <progress className="progress is-small is-primary" max="100">Loading...</progress>
+            )}
 
-            {/* Conditionally render a loading message */}
-            {loading && <p className="has-text-info">Loading {region} realm data...</p>}
 
             {/* Conditionally render an error message */}
             {error && (
-                <article className="message is-danger">
-                    <div className="message-body">
-                        {error}
-                    </div>
-                </article>
+                <div className="notification is-danger">
+                    <button className="delete" onClick={() => setError(null)}></button>
+                    {error}
+                </div>
             )}
 
-            {connectedRealmOverallStatus && (
-                <p>Overall Group Status: <span className="is-capitalized">{connectedRealmOverallStatus.status.toLowerCase()}</span> | Population: <span className="is-capitalized">{connectedRealmOverallStatus.population.toLowerCase()}</span></p>
-            )}
-
-            {/* Conditionally render the realm status if NOT loading, NO error, AND have data. */}
-            {!loading && !error && realms.length > 0 && (
-                <table className="table is-striped is-hoverabled is-fullwidth">
-                    <thead>
-                        <tr>
-                            <th>Status</th>
-                            <th>Realm Name</th>
-                            <th>Population</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {realms.map((realm, index) => (
-                            <tr key={index}>
-                                <td>
-                                    <span style={{ color: connectedRealmOverallStatus?.status === 'UP' ? 'green' : 'red' }}>
-                                        {connectedRealmOverallStatus?.status === 'UP' ? <>Up</> : <>Down</>}
-                                    </span>
-                                </td>
-                                <td><strong>{realm.name}</strong></td>
-                                <td><span className="is-capitalized">{connectedRealmOverallStatus?.population.toLowerCase()}</span></td>
+            {/* Conditionally render the realm status table only when not loading, no error, and data is available */}
+            {!isLoading && !error && allRealmsForDisplay && (
+                <>
+                    <table className="table is-striped is-hoverable is-fullwidth">
+                        <thead>
+                            <tr>
+                                {/* Clickable table headers for sorting */}
+                                <th onClick={() => handleSort('realmName')} style={{ cursor: 'pointer' }}>
+                                    Realm Name {sortColumn === 'realmName' && (sortDirection === 'asc' ? '▲' : '▼')}
+                                </th>
+                                <th onClick={() => handleSort('statusName')} style={{ cursor: 'pointer' }}>
+                                    Status {sortColumn === 'statusName' && (sortDirection === 'asc' ? '▲' : '▼')}
+                                </th>
+                                <th onClick={() => handleSort('populationName')} style={{ cursor: 'pointer' }}>
+                                    Population {sortColumn === 'populationName' && (sortDirection === 'asc' ? '▲' : '▼')}
+                                </th>
+                                <th onClick={() => handleSort('realmType')} style={{ cursor: 'pointer' }}>
+                                    Type {sortColumn === 'realmType' && (sortDirection === 'asc' ? '▲' : '▼')}
+                                </th>
+                                <th>Queue</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {/* Check if there are realms to display */}
+                            {allRealmsForDisplay.length > 0 ? (
+                                // Map over the sortedRealms array to render each realm row
+                                sortedRealms.map((realm, index) => (
+                                    <tr key={`${realm.connectedRealmId}-${realm.realmName}-${index}`}>
+                                        <td><strong>{realm.realmName}</strong></td>
+                                        <td>
+                                            {/* Apply success/danger text color based on statusType */}
+                                            <span className={`has-text-${realm.statusType === 'UP' ? 'success' : 'danger'}`}>
+                                                {realm.statusName}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {/* Apply different text colors based on population type */}
+                                            <span className={`is-capitalized has-text-${realm.populationType === 'HIGH' ? 'danger' :
+                                                realm.populationType === 'MEDIUM' ? 'warning' : 'info'
+                                                }`}>
+                                                {realm.populationName}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {realm.realmType}
+                                        </td>
+                                        <td>
+                                            {/* Display 'Yes' with a warning tag if there's a queue, otherwise 'No' */}
+                                            {realm.hasQueue ? (
+                                                <span className="tag is-warning is-light">Yes</span>
+                                            ) : (
+                                                <span>No</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                // Display a message if no individual realms are found.
+                                <tr>
+                                    <td colSpan="5" className="has-text-centered">No individual realms found for this region.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </>
             )}
-
-            {!loading && !error && realms.length === 0 && (
+            {/* Display a message if not loading, no error, and no realm data available */}
+            {!isLoading && !error && !allRealmsForDisplay && (
                 <p className="has-text-warning">No realm status data available for {region}.</p>
             )}
         </div>

@@ -4,7 +4,6 @@ import RealmStatusDisplay from './components/RealmStatusDisplay.jsx';
 import 'bulma/css/bulma.min.css';
 import './App.css'
 
-// const ACCESS_TOKEN = 'EU5GY8PFRQ3gThOMfmc1yjMn3JSAS2nA5V';
 const ACCESS_TOKEN = import.meta.env.VITE_ACCESS_TOKEN;
 const API_CONFIGS = {
   US: {
@@ -20,7 +19,7 @@ const API_CONFIGS = {
 }
 
 function App() {
-  const [activeTab, setActiveTab] = useState('US');
+  const [activeTab, setActiveTab] = useState('EU');
 
   return (
     <>
@@ -41,14 +40,14 @@ function App() {
           <div className="box">
             <div className="tabs is-centered">
               <ul>
-                <li className={activeTab === 'US' ? 'is-active' : ''}>
-                  <a onClick={() => setActiveTab('US')}>
-                    <span>US Realms</span>
-                  </a>
-                </li>
                 <li className={activeTab === 'EU' ? 'is-active' : ''}>
                   <a onClick={() => setActiveTab('EU')}>
                     <span>EU Realms</span>
+                  </a>
+                </li>
+                <li className={activeTab === 'US' ? 'is-active' : ''}>
+                  <a onClick={() => setActiveTab('US')}>
+                    <span>US Realms</span>
                   </a>
                 </li>
               </ul>
